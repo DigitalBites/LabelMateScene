@@ -1,0 +1,36 @@
+{
+  "title": "LabelMate Scene",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Create a Label Group",
+        "description": "Enter the name of the Home Assistant label to manage.",
+        "data": {
+          "label_name": "Label Name"
+        }
+      }
+    },
+    "error": {
+      "label_required": "Label name is required."
+    }
+  },
+  "error": {
+    "invalid_color": "Color must be a valid hex code like #RRGGBB."
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Edit Label Group",
+        "data": {
+          "label_name": "Label Name"
+        }
+      }
+    }
+  }
+      ,
+      "scene": {
+        "title": "Scene-backed Group",
+        "description": "Exposes one switch per scene that has the configured label. Turning it on activates the scene; turning it off attempts to turn off referenced entities when available."
+      }
+}
+

@@ -1,0 +1,13 @@
+{
+  "domain": "labelmate_scene",
+  "name": "LabelMate Scene",
+  "version": "0.6.0",
+  "documentation": "https://example.com/label_group",
+  "requirements": [],
+  "dependencies": ["group"],
+  "codeowners": ["@DigitalBites"],
+  "config_flow": true,
+  "integration_type": "device",
+  "iot_class": "local_push"
+}
+
