@@ -217,12 +217,9 @@ class LabelGroupCoordinator(DataUpdateCoordinator):
 
         self._targets = list(dict.fromkeys(filtered))
 
-        # If group type is scene, we report zero targets/on_count to avoid misleading sensors
-        if self._group_type == GROUP_TYPE_SCENE:
-            on_count = 0
-            self._targets = []
-        else:
-            on_count = 0
+        # Count on entities for non-scene groups
+        on_count = 0
+        if self._group_type != GROUP_TYPE_SCENE:
             for e in self._targets:
                 s = self.hass.states.get(e)
                 if s is not None and s.state == "on":
@@ -274,6 +271,20 @@ class LabelGroupCoordinator(DataUpdateCoordinator):
                     elif isinstance(ent_map, str):
                         if self.hass.states.get(ent_map):
                             ents.append(ent_map)
+                    
+                    # Also check for device references in scene attributes
+                    # When users add devices to scenes, they may be stored as device_id references
+                    device_ids = st.attributes.get("device_ids", [])
+                    if isinstance(device_ids, (list, tuple, set)):
+                        for dev_id in device_ids:
+                            if isinstance(dev_id, str):
+                                # Get all entities for this device
+                                dev = dev_reg.devices.get(dev_id)
+                                if dev:
+                                    for ent_entry in ent_reg.entities.values():
+                                        if ent_entry.device_id == dev_id and ent_entry.entity_id not in ents:
+                                            if self.hass.states.get(ent_entry.entity_id):
+                                                ents.append(ent_entry.entity_id)
 
                 scene_entities[scene_eid] = ents
 
@@ -302,6 +313,30 @@ class LabelGroupCoordinator(DataUpdateCoordinator):
                         )
             else:
                 _LOGGER.debug("[%s] No scenes discovered for label %s", self._entry_id, label)
+
+            # If group type is scene, aggregate all entities from all matching scenes
+            if self._group_type == GROUP_TYPE_SCENE and scenes:
+                aggregated_targets: set[str] = set()
+                for scene_eid in scenes:
+                    scene_ents = scene_entities.get(scene_eid, [])
+                    aggregated_targets.update(scene_ents)
+                
+                self._targets = list(aggregated_targets)
+                
+                # Count on entities from aggregated list
+                on_count = 0
+                for e in self._targets:
+                    s = self.hass.states.get(e)
+                    if s is not None and s.state == "on":
+                        on_count += 1
+                
+                _LOGGER.debug(
+                    "[%s] Scene group aggregated %d unique entities from %d scenes",
+                    self._entry_id,
+                    len(self._targets),
+                    len(scenes),
+                )
+
         except Exception:
             # Defensive: if something goes wrong enumerating scenes, continue with empty lists
             scenes = []
