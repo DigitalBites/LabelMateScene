@@ -25,10 +25,16 @@ async def async_setup_entry(hass, entry, async_add_entities):
         gtype,
         entry.options,
     )
+    
+    # Only create switch entity for switch and scene group types, not for light
+    from .const import GROUP_TYPE_LIGHT
+    if gtype == GROUP_TYPE_LIGHT:
+        return  # do not load switch entity
+    
     data = hass.data[DOMAIN][entry.entry_id]
     coordinator = data["coordinator"]
 
-    # Create a single switch for all group types (switch, light, scene)
+    # Create a single switch for switch and scene group types
     # Scene groups now aggregate all entities from all scenes with the label
     async_add_entities([LabelGroupSwitch(hass, coordinator, entry)])
     return
