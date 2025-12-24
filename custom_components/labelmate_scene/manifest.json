@@ -1,8 +1,8 @@
 {
   "domain": "labelmate_scene",
   "name": "LabelMate Scene",
-  "version": "0.6.0",
-  "documentation": "https://example.com/label_group",
+  "version": "0.7.1",
+  "documentation": "https://github.com/DigitalBites/LabelMateScene",
   "requirements": [],
   "dependencies": ["group"],
   "codeowners": ["@DigitalBites"],
