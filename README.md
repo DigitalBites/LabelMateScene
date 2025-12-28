@@ -79,7 +79,7 @@ If/when this project is published to HACS, install it from HACS and restart Home
 4. Use the integration's Options to set the light color (hex). Helpful for dashboards/themes (e.g., holiday strings).
 
 ## Demo
-[![Demo](./.assets/demo.gif)](./.assets/demo.mp4)
+[![Demo](https://github.com/DigitalBites/LabelMateScene-media/blob/main/.assets/demo.gif)](https://github.com/DigitalBites/LabelMateScene-media/blob/main/.assets/demo.mp4)
 
 
 ## Notes on behavior
