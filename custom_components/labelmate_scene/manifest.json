@@ -1,14 +1,13 @@
 {
   "domain": "labelmate_scene",
   "name": "LabelMate Scene",
-  "version": "0.7.1",
-  "documentation": "https://github.com/DigitalBites/LabelMateScene",
-  "requirements": [],
-  "dependencies": ["group"],
   "codeowners": ["@DigitalBites"],
   "config_flow": true,
+  "dependencies": ["group"],
+  "documentation": "https://github.com/DigitalBites/LabelMateScene",
   "integration_type": "device",
   "iot_class": "local_push",
-  "issue_tracker": "https://github.com/DigitalBites/LabelMateScene/issues"
+  "issue_tracker": "https://github.com/DigitalBites/LabelMateScene/issues",
+  "requirements": [],
+  "version": "0.7.2"
 }
-

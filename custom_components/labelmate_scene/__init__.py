@@ -4,6 +4,7 @@ import logging
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import config_validation as cv
 
 from .const import (
     CONF_GROUP_COLOR,
@@ -14,6 +15,8 @@ from .const import (
 from .entity_manager import LabelGroupCoordinator
 
 _LOGGER = logging.getLogger(f"custom_components.{DOMAIN}")
+
+CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 PLATFORMS = ["switch", "light", "sensor"]
 
