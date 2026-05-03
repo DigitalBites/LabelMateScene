@@ -14,9 +14,6 @@
       "label_required": "Label name is required."
     }
   },
-  "error": {
-    "invalid_color": "Color must be a valid hex code like #RRGGBB."
-  },
   "options": {
     "step": {
       "init": {
@@ -25,12 +22,9 @@
           "label_name": "Label Name"
         }
       }
+    },
+    "error": {
+      "invalid_color": "Color must be a valid hex code like #RRGGBB."
     }
   }
-      ,
-      "scene": {
-        "title": "Scene-backed Group",
-        "description": "Exposes one switch per scene that has the configured label. Turning it on activates the scene; turning it off attempts to turn off referenced entities when available."
-      }
 }
-
