@@ -15,6 +15,7 @@ from homeassistant.helpers.entity_registry import (
     EVENT_ENTITY_REGISTRY_UPDATED,
 )
 from homeassistant.helpers.entity_registry import (
+    async_entries_for_device,
     async_get as async_get_entity_registry,
 )
 from homeassistant.helpers.label_registry import EVENT_LABEL_REGISTRY_UPDATED
@@ -29,6 +30,13 @@ from .const import (
 from .helpers import slugify_label
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _has_label(labels, norm_label: str) -> bool:
+    """Return True if any label in the set slugifies to norm_label."""
+    if not labels:
+        return False
+    return any(slugify_label(lab) == norm_label for lab in labels)
 
 
 class LabelGroupCoordinator(DataUpdateCoordinator):
@@ -69,37 +77,57 @@ class LabelGroupCoordinator(DataUpdateCoordinator):
         """Listen for registry + state updates to keep membership fresh."""
 
         async def reg(ev):
+            """Label registry changed: labels may have been renamed or removed."""
             _LOGGER.debug("[%s] Registry %s -> refresh", self._entry_id, ev.event_type)
             await self.async_request_refresh()
 
-        async def reg_entity(ev):
-            """Handle entity registry updates more selectively.
+        async def reg_device(ev):
+            """Refresh only for device changes that can alter membership.
 
-            Only refresh when a scene entity is affected to avoid unnecessary work,
-            or when the entity's labels changed (event may not include labels, so
-            fall back to a refresh if uncertain).
+            Membership depends on device labels, so an update that did not touch
+            labels (name, area, sw_version, a new device being created during
+            another integration's setup...) is ignored. Create/remove are also
+            ignored: a new device has no entities yet, and a removed device takes
+            its entities with it, which arrives as entity registry events.
             """
-            try:
-                entity_id = ev.data.get("entity_id")
-                action = ev.data.get("action")
-            except Exception:
-                entity_id = None
-                action = None
-
-            if entity_id and entity_id.startswith("scene."):
-                _LOGGER.debug(
-                    "[%s] Entity registry update for scene %s (action=%s) -> refresh",
-                    self._entry_id,
-                    entity_id,
-                    action,
-                )
-                await self.async_request_refresh()
+            data = ev.data or {}
+            if data.get("action") != "update":
                 return
-
-            # If no specific entity_id supplied, fall back to a full refresh
+            changes = data.get("changes") or {}
+            if "labels" not in changes:
+                return
             _LOGGER.debug(
-                "[%s] Entity registry update (no scene-specific id) -> refresh",
+                "[%s] Device %s labels changed -> refresh", self._entry_id, data.get("device_id")
+            )
+            await self.async_request_refresh()
+
+        async def reg_entity(ev):
+            """Refresh only for entity registry changes that can alter membership.
+
+            That is: an entity appearing or disappearing, an entity whose labels or
+            device changed, any scene entity (scene edits arrive as entity registry
+            updates), or an entity we currently track.
+            """
+            data = ev.data or {}
+            entity_id = data.get("entity_id")
+            action = data.get("action")
+            changes = data.get("changes") or {}
+
+            relevant = (
+                action in ("create", "remove")
+                or "labels" in changes
+                or "device_id" in changes
+                or (entity_id or "").startswith("scene.")
+                or entity_id in self._targets
+            )
+            if not relevant:
+                return
+            _LOGGER.debug(
+                "[%s] Entity registry %s for %s (changes=%s) -> refresh",
                 self._entry_id,
+                action,
+                entity_id,
+                list(changes),
             )
             await self.async_request_refresh()
 
@@ -137,10 +165,8 @@ class LabelGroupCoordinator(DataUpdateCoordinator):
                     await self.async_request_refresh()
                     return
 
-        # Use a selective handler for entity registry updates (scene entities)
         self._unsub.append(self.hass.bus.async_listen(EVENT_ENTITY_REGISTRY_UPDATED, reg_entity))
-        # Use generic handler for device and label registry updates
-        self._unsub.append(self.hass.bus.async_listen(EVENT_DEVICE_REGISTRY_UPDATED, reg))
+        self._unsub.append(self.hass.bus.async_listen(EVENT_DEVICE_REGISTRY_UPDATED, reg_device))
         self._unsub.append(self.hass.bus.async_listen(EVENT_LABEL_REGISTRY_UPDATED, reg))
         self._unsub.append(self.hass.bus.async_listen(EVENT_STATE_CHANGED, st))
 
@@ -187,25 +213,23 @@ class LabelGroupCoordinator(DataUpdateCoordinator):
         else:
             # Iterate all registered entities; include an entity if it or its
             # device has the requested label. Filter to allowed domains.
+            # Iterating the registry is supported; per-item lookups must use
+            # async_get(): the mapping-style .get() is deprecated and, on current
+            # cores, wrapped in a shim that walks the call stack on every call,
+            # which turned this loop into ~10 s of blocked event loop.
+            device_has_label: dict[str, bool] = {}
             for entry in ent_reg.entities.values():
-                try:
-                    # entry.labels is a set-like of labels attached to the entity
-                    for lab in entry.labels or set():
-                        if slugify_label(lab) == norm_label:
-                            targets.append(entry.entity_id)
-                            raise StopIteration
-
-                    # If entity belongs to a device, check device labels
-                    if entry.device_id:
-                        dev = dev_reg.devices.get(entry.device_id)
-                        if dev:
-                            for lab in dev.labels or set():
-                                if slugify_label(lab) == norm_label:
-                                    targets.append(entry.entity_id)
-                                    raise StopIteration
-                except Exception:
-                    # Skip entries we can't inspect
+                if _has_label(entry.labels, norm_label):
+                    targets.append(entry.entity_id)
                     continue
+                dev_id = entry.device_id
+                if not dev_id:
+                    continue
+                if dev_id not in device_has_label:
+                    dev = dev_reg.async_get(dev_id)
+                    device_has_label[dev_id] = bool(dev and _has_label(dev.labels, norm_label))
+                if device_has_label[dev_id]:
+                    targets.append(entry.entity_id)
 
         # Filter to allowed domains and ensure entity exists in state machine
         filtered: list[str] = []
@@ -236,11 +260,8 @@ class LabelGroupCoordinator(DataUpdateCoordinator):
                 try:
                     if not entry.entity_id.startswith("scene."):
                         continue
-
-                    for lab in entry.labels or set():
-                        if slugify_label(lab) == norm_label:
-                            scenes.append(entry.entity_id)
-                            break
+                    if _has_label(entry.labels, norm_label):
+                        scenes.append(entry.entity_id)
                 except Exception:
                     continue
 
@@ -277,14 +298,11 @@ class LabelGroupCoordinator(DataUpdateCoordinator):
                     device_ids = st.attributes.get("device_ids", [])
                     if isinstance(device_ids, (list, tuple, set)):
                         for dev_id in device_ids:
-                            if isinstance(dev_id, str):
-                                # Get all entities for this device
-                                dev = dev_reg.devices.get(dev_id)
-                                if dev:
-                                    for ent_entry in ent_reg.entities.values():
-                                        if ent_entry.device_id == dev_id and ent_entry.entity_id not in ents:
-                                            if self.hass.states.get(ent_entry.entity_id):
-                                                ents.append(ent_entry.entity_id)
+                            if isinstance(dev_id, str) and dev_reg.async_get(dev_id):
+                                for ent_entry in async_entries_for_device(ent_reg, dev_id):
+                                    eid = ent_entry.entity_id
+                                    if eid not in ents and self.hass.states.get(eid):
+                                        ents.append(eid)
 
                 scene_entities[scene_eid] = ents
 
